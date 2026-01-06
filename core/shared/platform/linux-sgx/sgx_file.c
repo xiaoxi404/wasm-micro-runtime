@@ -5,6 +5,7 @@
 
 #include "platform_api_vmcore.h"
 #include "sgx_error.h"
+#include "sgx_tcrypto.h"
 #include "sgx_file.h"
 
 #if WASM_ENABLE_SGX_IPFS != 0
@@ -15,6 +16,16 @@
 
 #define TRACE_FUNC() os_printf("undefined %s\n", __FUNCTION__)
 #define TRACE_OCALL_FAIL() os_printf("ocall %s failed!\n", __FUNCTION__)
+
+uint8_t g_encctr[16] = { 0x64, 0x42, 0x33, 0x5a, 0x1a, 0xd0, 0xed, 0xc1,
+                         0x5b, 0x37, 0x76, 0x7c, 0x00, 0x00, 0x00, 0x00 };
+
+uint8_t g_decctr[16] = { 0x64, 0x42, 0x33, 0x5a, 0x1a, 0xd0, 0xed, 0xc1,
+                         0x5b, 0x37, 0x76, 0x7c, 0x00, 0x00, 0x00, 0x00 };
+uint8_t g_enc_remain_bytes = 0;
+static const uint8_t key_bytes[16] = { 0x4a, 0x85, 0xeb, 0x44, 0x4a, 0x28,
+                                       0x5a, 0x36, 0x2d, 0x41, 0xb3, 0x30,
+                                       0xab, 0xad, 0x48, 0xc3 };
 
 /** fd **/
 int
@@ -371,6 +382,8 @@ readv_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
 {
     ssize_t ret, size_left;
     struct iovec *iov1;
+    sgx_status_t st = 0;
+
     int i;
     char *p;
     uint64 total_size = sizeof(struct iovec) * (uint64)iovcnt;
@@ -415,21 +428,44 @@ readv_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
     }
 
     p = (char *)(uintptr_t)(sizeof(struct iovec) * iovcnt);
+    /* os_printf("an readv ocall read %ld bytes on fd %ld and iovcnt = %d\n",
+       ret, fd, iovcnt); */
 
     size_left = ret;
-    for (i = 0; i < iovcnt; i++) {
+    for (i = 0; i < iovcnt && size_left > 0; i++) {
         if (size_left > iov[i].iov_len) {
-            memcpy(iov[i].iov_base, (uintptr_t)p + (char *)iov1,
-                   iov[i].iov_len);
+
+            st = sgx_aes_ctr_decrypt((sgx_aes_ctr_128bit_key_t *)key_bytes,
+                                     (uintptr_t)p + (uint8_t *)iov1,
+                                     iov1[i].iov_len, g_decctr, 32,
+                                     iov[i].iov_base);
+            if (st) {
+                os_printf("%s %d: aes decrypt failed %#05x\n", __func__,
+                          __LINE__, st);
+                BH_FREE(iov1);
+                return -1;
+            };
+            /* memcpy(iov[i].iov_base, (uintptr_t)p + (char *)iov1,
+                   iov[i].iov_len); */
             p += iov[i].iov_len;
             size_left -= iov[i].iov_len;
         }
         else {
-            memcpy(iov[i].iov_base, (uintptr_t)p + (char *)iov1, size_left);
+            st = sgx_aes_ctr_decrypt((sgx_aes_ctr_128bit_key_t *)key_bytes,
+                                     (uintptr_t)p + (uint8_t *)iov1, size_left,
+                                     g_decctr, 32, iov[i].iov_base);
+            if (st) {
+                os_printf("%s %d: aes decrypt failed %#05x\n", __func__,
+                          __LINE__, st);
+                BH_FREE(iov1);
+                return -1;
+            };
+
+            /* memcpy(iov[i].iov_base, (uintptr_t)p + (char *)iov1, size_left);
+             */
             break;
         }
     }
-
     BH_FREE(iov1);
     if (ret == -1)
         errno = get_errno();
@@ -445,13 +481,16 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
     int i;
     char *p;
     uint64 total_size = sizeof(struct iovec) * (uint64)iovcnt;
+    sgx_status_t st = 0;
 
     if (iov == NULL || iovcnt < 1)
         return -1;
 
+    uint64 data_size = g_enc_remain_bytes;
     for (i = 0; i < iovcnt; i++) {
-        total_size += iov[i].iov_len;
+        data_size += iov[i].iov_len;
     }
+    total_size += data_size;
 
     if (total_size >= UINT32_MAX)
         return -1;
@@ -471,10 +510,42 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
 
     p = (char *)(uintptr_t)(sizeof(struct iovec) * iovcnt);
 
-    for (i = 0; i < iovcnt; i++) {
+    // handle the first iov
+
+    iov1[0].iov_len = iov[0].iov_len + g_enc_remain_bytes;
+    iov1[0].iov_base = p;
+    memcpy((uintptr_t)p + g_enc_remain_bytes + (uint8_t *)iov1, iov[0].iov_base,
+           iov[0].iov_len);
+    st = sgx_aes_ctr_encrypt((sgx_aes_ctr_128bit_key_t *)key_bytes,
+                             (uintptr_t)p + (uint8_t *)iov1, iov1[0].iov_len,
+                             g_encctr, 32, (uintptr_t)p + (uint8_t *)iov1);
+    if (st) {
+        os_printf("%s %d: aes encrypt failed %#05x\n", __func__, __LINE__, st);
+        BH_FREE(iov1);
+        return -1;
+    };
+    iov1[0].iov_len -= g_enc_remain_bytes;
+    iov1[0].iov_base += g_enc_remain_bytes;
+
+    // handle the remain iov
+    for (i = 1; i < iovcnt; i++) {
         iov1[i].iov_len = iov[i].iov_len;
         iov1[i].iov_base = p;
-        memcpy((uintptr_t)p + (char *)iov1, iov[i].iov_base, iov[i].iov_len);
+
+        // print_hex(iov[i].iov_base, iov[i].iov_len);
+        st = sgx_aes_ctr_encrypt((sgx_aes_ctr_128bit_key_t *)key_bytes,
+                                 iov[i].iov_base, iov[i].iov_len, g_encctr, 32,
+                                 (uintptr_t)p + (uint8_t *)iov1);
+        os_printf("aes encrypt once !!!!\n");
+
+        if (st) {
+            os_printf("%s %d: aes encrypt failed %#05x\n", __func__, __LINE__,
+                      st);
+            BH_FREE(iov1);
+            return -1;
+        };
+        /* memcpy((uintptr_t)p + (char *)iov1, iov[i].iov_base, iov[i].iov_len);
+         */
         p += iov[i].iov_len;
     }
 
@@ -485,7 +556,13 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
         BH_FREE(iov1);
         return -1;
     }
+    /* os_printf("an writev ocall wrote %ld bytes on fd %ld ans iovcnt = %d\n",
+              ret, fd, iovcnt); */
 
+    g_enc_remain_bytes = data_size % 16;
+    if (g_enc_remain_bytes != 0) {
+        g_encctr[15] -= 1;
+    }
     BH_FREE(iov1);
     if (ret == -1)
         errno = get_errno();
