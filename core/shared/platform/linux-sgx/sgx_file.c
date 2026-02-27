@@ -424,15 +424,14 @@ readv_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
        ret, fd, iovcnt); */
 
     size_left = ret;
-    for (i = 0; i < iovcnt && size_left > 0; i++) {
+    for (i = 0; i < iovcnt; i++) {
         if (size_left > iov[i].iov_len) {
 
-            st = ctr_decrypt_fn(&g_sgx_stdio_crypto_state.dec_key,
-                                (uintptr_t)p + (uint8_t *)iov1, iov1[i].iov_len,
-                                g_sgx_stdio_crypto_state.decctr, 32,
-                                iov[i].iov_base);
+            st = ctr_decrypt_fn((uintptr_t)p + (uint8_t *)iov1, iov1[i].iov_len,
+                                iov[i].iov_base,
+                                g_sgx_stdio_crypto_state.dec_ctr_handle);
             if (st) {
-                os_printf("%s %d: aes decrypt failed %#05x\n", __func__,
+                os_printf("%s %d: ctr decrypt failed %#05x\n", __func__,
                           __LINE__, st);
                 BH_FREE(iov1);
                 return -1;
@@ -446,12 +445,11 @@ readv_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
                            g_sgx_stdio_crypto_state.dec_hash_handle);
         }
         else {
-            st = ctr_decrypt_fn(&g_sgx_stdio_crypto_state.dec_key,
-                                (uintptr_t)p + (uint8_t *)iov1, size_left,
-                                g_sgx_stdio_crypto_state.decctr, 32,
-                                iov[i].iov_base);
+            st = ctr_decrypt_fn((uintptr_t)p + (uint8_t *)iov1, size_left,
+                                iov[i].iov_base,
+                                g_sgx_stdio_crypto_state.dec_ctr_handle);
             if (st) {
-                os_printf("%s %d: aes decrypt failed %#05x\n", __func__,
+                os_printf("%s %d: ctr decrypt failed %#05x\n", __func__,
                           __LINE__, st);
                 BH_FREE(iov1);
                 return -1;
@@ -487,11 +485,9 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
     if (iov == NULL || iovcnt < 1)
         return -1;
 
-    uint64 data_size = g_sgx_stdio_crypto_state.enc_remain_bytes;
     for (i = 0; i < iovcnt; i++) {
-        data_size += iov[i].iov_len;
+        total_size += iov[i].iov_len;
     }
-    total_size += data_size;
 
     if (total_size >= UINT32_MAX)
         return -1;
@@ -511,41 +507,20 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
 
     p = (char *)(uintptr_t)(sizeof(struct iovec) * iovcnt);
 
-    // handle the first iov
-    hash_update_fn(iov[0].iov_base, iov[0].iov_len,
-                   g_sgx_stdio_crypto_state.enc_hash_handle);
-
-    iov1[0].iov_len =
-        iov[0].iov_len + g_sgx_stdio_crypto_state.enc_remain_bytes;
-    iov1[0].iov_base = p;
-    memcpy((uintptr_t)p + g_sgx_stdio_crypto_state.enc_remain_bytes
-               + (uint8_t *)iov1,
-           iov[0].iov_base, iov[0].iov_len);
-    st = ctr_encrypt_fn(&g_sgx_stdio_crypto_state.enc_key,
-                        (uintptr_t)p + (uint8_t *)iov1, iov1[0].iov_len,
-                        g_sgx_stdio_crypto_state.encctr, 32,
-                        (uintptr_t)p + (uint8_t *)iov1);
-    if (st) {
-        os_printf("%s %d: aes encrypt failed %#05x\n", __func__, __LINE__, st);
-        BH_FREE(iov1);
-        return -1;
-    };
-    iov1[0].iov_len -= g_sgx_stdio_crypto_state.enc_remain_bytes;
-    iov1[0].iov_base += g_sgx_stdio_crypto_state.enc_remain_bytes;
-
-    // handle the remain iov
-    for (i = 1; i < iovcnt; i++) {
+    for (i = 0; i < iovcnt; i++) {
         iov1[i].iov_len = iov[i].iov_len;
         iov1[i].iov_base = p;
 
+        hash_update_fn(iov[i].iov_base, iov[i].iov_len,
+                       g_sgx_stdio_crypto_state.enc_hash_handle);
+
         // print_hex(iov[i].iov_base, iov[i].iov_len);
-        st = ctr_encrypt_fn(&g_sgx_stdio_crypto_state.enc_key, iov[i].iov_base,
-                            iov[i].iov_len, g_sgx_stdio_crypto_state.encctr, 32,
-                            (uintptr_t)p + (uint8_t *)iov1);
-        os_printf("aes encrypt once !!!!\n");
+        st = ctr_encrypt_fn(iov[i].iov_base, iov[i].iov_len,
+                            (uintptr_t)p + (uint8_t *)iov1,
+                            g_sgx_stdio_crypto_state.enc_ctr_handle);
 
         if (st) {
-            os_printf("%s %d: aes encrypt failed %#05x\n", __func__, __LINE__,
+            os_printf("%s %d: ctr encrypt failed %#05x\n", __func__, __LINE__,
                       st);
             BH_FREE(iov1);
             return -1;
@@ -565,10 +540,6 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
     /* os_printf("an writev ocall wrote %ld bytes on fd %ld ans iovcnt = %d\n",
               ret, fd, iovcnt); */
 
-    g_sgx_stdio_crypto_state.enc_remain_bytes = data_size % 16;
-    if (g_sgx_stdio_crypto_state.enc_remain_bytes != 0) {
-        g_sgx_stdio_crypto_state.encctr[15] -= 1;
-    }
     BH_FREE(iov1);
     if (ret == -1)
         errno = get_errno();

@@ -262,12 +262,8 @@ int
 get_errno(void);
 
 typedef struct sgx_stdio_crypto_state {
-    uint8_t encctr[16];
-    uint8_t decctr[16];
-    uint8_t enc_remain_bytes;
-    uint8_t dec_remain_bytes;
-    sgx_aes_ctr_128bit_key_t enc_key;
-    sgx_aes_ctr_128bit_key_t dec_key;
+    sgx_aes_state_handle_t enc_ctr_handle;
+    sgx_aes_state_handle_t dec_ctr_handle;
     sgx_sha_state_handle_t enc_hash_handle;
     sgx_sha_state_handle_t dec_hash_handle;
 } sgx_stdio_crypto_state_t;

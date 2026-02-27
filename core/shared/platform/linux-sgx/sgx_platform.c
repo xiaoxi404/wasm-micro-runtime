@@ -19,16 +19,8 @@ static os_ctr_decrypt_function_t ctr_decrypt_function = NULL;
 static os_hash_update_function_t hash_update_function = NULL;
 
 sgx_stdio_crypto_state_t g_sgx_stdio_crypto_state = {
-    .encctr = { 0x64, 0x42, 0x33, 0x5a, 0x1a, 0xd0, 0xed, 0xc1, 0x5b, 0x37,
-                0x76, 0x7c, 0x00, 0x00, 0x00, 0x00 },
-    .decctr = { 0x64, 0x42, 0x33, 0x5a, 0x1a, 0xd0, 0xed, 0xc1, 0x5b, 0x37,
-                0x76, 0x7c, 0x00, 0x00, 0x00, 0x00 },
-    .enc_remain_bytes = 0,
-    .dec_remain_bytes = 0,
-    .enc_key = { 0x4a, 0x85, 0xeb, 0x44, 0x4a, 0x28, 0x5a, 0x36, 0x2d, 0x41,
-                 0xb3, 0x30, 0xab, 0xad, 0x48, 0xc3 },
-    .dec_key = { 0x4a, 0x85, 0xeb, 0x44, 0x4a, 0x28, 0x5a, 0x36, 0x2d, 0x41,
-                 0xb3, 0x30, 0xab, 0xad, 0x48, 0xc3 },
+    .enc_ctr_handle = NULL,
+    .dec_ctr_handle = NULL,
     .enc_hash_handle = NULL,
     .dec_hash_handle = NULL,
 };
@@ -99,7 +91,7 @@ void
 os_set_ctr_encrypt_function(os_ctr_encrypt_function_t pf)
 {
     /* os_printf("set ctr encrypt function pointer: %p\n", pf); */
-    ctr_encrypt_function = pf ? pf : sgx_aes_ctr_encrypt;
+    ctr_encrypt_function = pf;
 }
 
 os_ctr_encrypt_function_t
@@ -114,7 +106,7 @@ void
 os_set_ctr_decrypt_function(os_ctr_decrypt_function_t pf)
 {
     /* os_printf("set ctr decrypt function pointer: %p\n", pf); */
-    ctr_decrypt_function = pf ? pf : sgx_aes_ctr_decrypt;
+    ctr_decrypt_function = pf;
 }
 
 os_ctr_decrypt_function_t
