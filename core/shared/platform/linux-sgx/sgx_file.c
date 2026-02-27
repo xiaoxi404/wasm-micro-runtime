@@ -4,6 +4,7 @@
  */
 
 #include "platform_api_vmcore.h"
+#include "platform_internal.h"
 #include "sgx_error.h"
 #include "sgx_file.h"
 
@@ -377,6 +378,7 @@ readv_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
     char *p;
     uint64 total_size = sizeof(struct iovec) * (uint64)iovcnt;
     os_ctr_decrypt_function_t ctr_decrypt_fn = os_get_ctr_decrypt_function();
+    os_hash_update_function_t hash_update_fn = os_get_hash_update_function();
 
     if (iov == NULL || iovcnt < 1)
         return -1;
@@ -439,6 +441,9 @@ readv_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
                    iov[i].iov_len); */
             p += iov[i].iov_len;
             size_left -= iov[i].iov_len;
+
+            hash_update_fn(iov[i].iov_base, iov[i].iov_len,
+                           g_sgx_stdio_crypto_state.dec_hash_handle);
         }
         else {
             st = ctr_decrypt_fn(&g_sgx_stdio_crypto_state.dec_key,
@@ -454,6 +459,9 @@ readv_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
 
             /* memcpy(iov[i].iov_base, (uintptr_t)p + (char *)iov1, size_left);
              */
+
+            hash_update_fn(iov[i].iov_base, size_left,
+                           g_sgx_stdio_crypto_state.dec_hash_handle);
             break;
         }
     }
@@ -474,6 +482,7 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
     uint64 total_size = sizeof(struct iovec) * (uint64)iovcnt;
     sgx_status_t st = 0;
     os_ctr_encrypt_function_t ctr_encrypt_fn = os_get_ctr_encrypt_function();
+    os_hash_update_function_t hash_update_fn = os_get_hash_update_function();
 
     if (iov == NULL || iovcnt < 1)
         return -1;
@@ -503,6 +512,8 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
     p = (char *)(uintptr_t)(sizeof(struct iovec) * iovcnt);
 
     // handle the first iov
+    hash_update_fn(iov[0].iov_base, iov[0].iov_len,
+                   g_sgx_stdio_crypto_state.enc_hash_handle);
 
     iov1[0].iov_len =
         iov[0].iov_len + g_sgx_stdio_crypto_state.enc_remain_bytes;

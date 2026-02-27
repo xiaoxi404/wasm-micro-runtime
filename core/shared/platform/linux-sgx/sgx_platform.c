@@ -16,6 +16,7 @@ static os_print_function_t print_function = NULL;
 
 static os_ctr_encrypt_function_t ctr_encrypt_function = NULL;
 static os_ctr_decrypt_function_t ctr_decrypt_function = NULL;
+static os_hash_update_function_t hash_update_function = NULL;
 
 sgx_stdio_crypto_state_t g_sgx_stdio_crypto_state = {
     .encctr = { 0x64, 0x42, 0x33, 0x5a, 0x1a, 0xd0, 0xed, 0xc1, 0x5b, 0x37,
@@ -28,6 +29,8 @@ sgx_stdio_crypto_state_t g_sgx_stdio_crypto_state = {
                  0xb3, 0x30, 0xab, 0xad, 0x48, 0xc3 },
     .dec_key = { 0x4a, 0x85, 0xeb, 0x44, 0x4a, 0x28, 0x5a, 0x36, 0x2d, 0x41,
                  0xb3, 0x30, 0xab, 0xad, 0x48, 0xc3 },
+    .enc_hash_handle = NULL,
+    .dec_hash_handle = NULL,
 };
 
 int
@@ -120,6 +123,26 @@ os_get_ctr_decrypt_function(void)
     /* os_printf("aes ctr decrypt function pointer: %p\n", sgx_aes_ctr_decrypt);
     os_printf("get ctr decrypt function: %p\n", ctr_decrypt_function); */
     return ctr_decrypt_function;
+}
+
+void
+os_set_hash_handle(sgx_sha_state_handle_t p_enchash_handle,
+                   sgx_sha_state_handle_t p_dechash_handle)
+{
+    g_sgx_stdio_crypto_state.enc_hash_handle = p_enchash_handle;
+    g_sgx_stdio_crypto_state.dec_hash_handle = p_dechash_handle;
+}
+
+void
+os_set_hash_update_function(os_hash_update_function_t pf)
+{
+    hash_update_function = pf;
+}
+
+os_hash_update_function_t
+os_get_hash_update_function(void)
+{
+    return hash_update_function;
 }
 
 #define FIXED_BUFFER_SIZE 4096

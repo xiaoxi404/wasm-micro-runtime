@@ -8,6 +8,7 @@
 
 #include "sgx_time.h"
 #include "sgx_tcrypto.h"
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -267,6 +268,8 @@ typedef struct sgx_stdio_crypto_state {
     uint8_t dec_remain_bytes;
     sgx_aes_ctr_128bit_key_t enc_key;
     sgx_aes_ctr_128bit_key_t dec_key;
+    sgx_sha_state_handle_t enc_hash_handle;
+    sgx_sha_state_handle_t dec_hash_handle;
 } sgx_stdio_crypto_state_t;
 
 extern sgx_stdio_crypto_state_t g_sgx_stdio_crypto_state;

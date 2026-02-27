@@ -77,6 +77,16 @@ os_set_ctr_decrypt_function(os_ctr_decrypt_function_t pf);
 os_ctr_decrypt_function_t
 os_get_ctr_decrypt_function(void);
 
+typedef sgx_status_t (*os_hash_update_function_t)(
+    const uint8_t *p_src, uint32_t src_len, sgx_sha_state_handle_t sha_handle);
+void
+os_set_hash_handle(sgx_sha_state_handle_t enc_hash_handle,
+                   sgx_sha_state_handle_t dec_hash_handle);
+void
+os_set_hash_update_function(os_hash_update_function_t pf);
+os_hash_update_function_t
+os_get_hash_update_function(void);
+
 char *
 strcpy(char *dest, const char *src);
 
