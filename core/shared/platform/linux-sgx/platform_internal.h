@@ -61,6 +61,22 @@ typedef int (*os_print_function_t)(const char *message);
 void
 os_set_print_function(os_print_function_t pf);
 
+typedef sgx_status_t (*os_ctr_encrypt_function_t)(
+    const sgx_aes_ctr_128bit_key_t *key, const uint8_t *src, uint32_t src_len,
+    uint8_t *ctr, uint32_t ctr_inc_bits, uint8_t *dst);
+void
+os_set_ctr_encrypt_function(os_ctr_encrypt_function_t pf);
+os_ctr_encrypt_function_t
+os_get_ctr_encrypt_function(void);
+
+typedef sgx_status_t (*os_ctr_decrypt_function_t)(
+    const sgx_aes_ctr_128bit_key_t *key, const uint8_t *src, uint32_t src_len,
+    uint8_t *ctr, uint32_t ctr_inc_bits, uint8_t *dst);
+void
+os_set_ctr_decrypt_function(os_ctr_decrypt_function_t pf);
+os_ctr_decrypt_function_t
+os_get_ctr_decrypt_function(void);
+
 char *
 strcpy(char *dest, const char *src);
 

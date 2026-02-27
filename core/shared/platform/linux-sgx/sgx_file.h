@@ -7,6 +7,7 @@
 #define _SGX_FILE_H
 
 #include "sgx_time.h"
+#include "sgx_tcrypto.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,13 +64,13 @@ extern "C" {
 #define SEEK_CUR 1
 #define SEEK_END 2
 
-#define S_ISDIR(mode) (((mode)&S_IFMT) == S_IFDIR)
-#define S_ISCHR(mode) (((mode)&S_IFMT) == S_IFCHR)
-#define S_ISBLK(mode) (((mode)&S_IFMT) == S_IFBLK)
-#define S_ISREG(mode) (((mode)&S_IFMT) == S_IFREG)
-#define S_ISFIFO(mode) (((mode)&S_IFMT) == S_IFIFO)
-#define S_ISLNK(mode) (((mode)&S_IFMT) == S_IFLNK)
-#define S_ISSOCK(mode) (((mode)&S_IFMT) == S_IFSOCK)
+#define S_ISDIR(mode) (((mode) & S_IFMT) == S_IFDIR)
+#define S_ISCHR(mode) (((mode) & S_IFMT) == S_IFCHR)
+#define S_ISBLK(mode) (((mode) & S_IFMT) == S_IFBLK)
+#define S_ISREG(mode) (((mode) & S_IFMT) == S_IFREG)
+#define S_ISFIFO(mode) (((mode) & S_IFMT) == S_IFIFO)
+#define S_ISLNK(mode) (((mode) & S_IFMT) == S_IFLNK)
+#define S_ISSOCK(mode) (((mode) & S_IFMT) == S_IFSOCK)
 
 #define DT_UNKNOWN 0
 #define DT_FIFO 1
@@ -258,6 +259,17 @@ getentropy(void *buffer, size_t length);
 
 int
 get_errno(void);
+
+typedef struct sgx_stdio_crypto_state {
+    uint8_t encctr[16];
+    uint8_t decctr[16];
+    uint8_t enc_remain_bytes;
+    uint8_t dec_remain_bytes;
+    sgx_aes_ctr_128bit_key_t enc_key;
+    sgx_aes_ctr_128bit_key_t dec_key;
+} sgx_stdio_crypto_state_t;
+
+extern sgx_stdio_crypto_state_t g_sgx_stdio_crypto_state;
 
 #ifdef __cplusplus
 }
