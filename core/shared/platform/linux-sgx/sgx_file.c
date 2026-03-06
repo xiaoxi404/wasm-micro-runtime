@@ -379,6 +379,7 @@ readv_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
     uint64 total_size = sizeof(struct iovec) * (uint64)iovcnt;
     os_ctr_decrypt_function_t ctr_decrypt_fn = os_get_ctr_decrypt_function();
     os_hash_update_function_t hash_update_fn = os_get_hash_update_function();
+    uint64_t stdinfd = os_get_stdin_fd();
 
     if (iov == NULL || iovcnt < 1)
         return -1;
@@ -424,43 +425,55 @@ readv_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
        ret, fd, iovcnt); */
 
     size_left = ret;
-    for (i = 0; i < iovcnt; i++) {
-        if (size_left > iov[i].iov_len) {
+    if (fd != stdinfd) {
+        for (i = 0; i < iovcnt; i++) {
+            if (size_left > iov[i].iov_len) {
+                memcpy(iov[i].iov_base, (uintptr_t)p + (char *)iov1,
+                       iov[i].iov_len);
+                p += iov[i].iov_len;
+                size_left -= iov[i].iov_len;
+            }
+            else {
 
-            st = ctr_decrypt_fn((uintptr_t)p + (uint8_t *)iov1, iov1[i].iov_len,
-                                iov[i].iov_base,
-                                g_sgx_stdio_crypto_state.dec_ctr_handle);
-            if (st) {
-                os_printf("%s %d: ctr decrypt failed %#05x\n", __func__,
-                          __LINE__, st);
-                BH_FREE(iov1);
-                return -1;
-            };
-            /* memcpy(iov[i].iov_base, (uintptr_t)p + (char *)iov1,
-                   iov[i].iov_len); */
-            p += iov[i].iov_len;
-            size_left -= iov[i].iov_len;
-
-            hash_update_fn(iov[i].iov_base, iov[i].iov_len,
-                           g_sgx_stdio_crypto_state.dec_hash_handle);
+                memcpy(iov[i].iov_base, (uintptr_t)p + (char *)iov1, size_left);
+                break;
+            }
         }
-        else {
-            st = ctr_decrypt_fn((uintptr_t)p + (uint8_t *)iov1, size_left,
-                                iov[i].iov_base,
-                                g_sgx_stdio_crypto_state.dec_ctr_handle);
-            if (st) {
-                os_printf("%s %d: ctr decrypt failed %#05x\n", __func__,
-                          __LINE__, st);
-                BH_FREE(iov1);
-                return -1;
-            };
+    }
+    else {
+        for (i = 0; i < iovcnt; i++) {
+            if (size_left > iov[i].iov_len) {
 
-            /* memcpy(iov[i].iov_base, (uintptr_t)p + (char *)iov1, size_left);
-             */
+                st = ctr_decrypt_fn((uintptr_t)p + (uint8_t *)iov1,
+                                    iov1[i].iov_len, iov[i].iov_base,
+                                    g_sgx_stdio_crypto_state.dec_ctr_handle);
+                if (st) {
+                    os_printf("%s %d: ctr decrypt failed %#05x\n", __func__,
+                              __LINE__, st);
+                    BH_FREE(iov1);
+                    return -1;
+                };
+                p += iov[i].iov_len;
+                size_left -= iov[i].iov_len;
 
-            hash_update_fn(iov[i].iov_base, size_left,
-                           g_sgx_stdio_crypto_state.dec_hash_handle);
-            break;
+                hash_update_fn(iov[i].iov_base, iov[i].iov_len,
+                               g_sgx_stdio_crypto_state.dec_hash_handle);
+            }
+            else {
+                st = ctr_decrypt_fn((uintptr_t)p + (uint8_t *)iov1, size_left,
+                                    iov[i].iov_base,
+                                    g_sgx_stdio_crypto_state.dec_ctr_handle);
+                if (st) {
+                    os_printf("%s %d: ctr decrypt failed %#05x\n", __func__,
+                              __LINE__, st);
+                    BH_FREE(iov1);
+                    return -1;
+                };
+
+                hash_update_fn(iov[i].iov_base, size_left,
+                               g_sgx_stdio_crypto_state.dec_hash_handle);
+                break;
+            }
         }
     }
     BH_FREE(iov1);
@@ -481,6 +494,7 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
     sgx_status_t st = 0;
     os_ctr_encrypt_function_t ctr_encrypt_fn = os_get_ctr_encrypt_function();
     os_hash_update_function_t hash_update_fn = os_get_hash_update_function();
+    uint64_t stdoutfd = os_get_stdout_fd();
 
     if (iov == NULL || iovcnt < 1)
         return -1;
@@ -507,27 +521,36 @@ writev_internal(int fd, const struct iovec *iov, int iovcnt, bool has_offset,
 
     p = (char *)(uintptr_t)(sizeof(struct iovec) * iovcnt);
 
-    for (i = 0; i < iovcnt; i++) {
-        iov1[i].iov_len = iov[i].iov_len;
-        iov1[i].iov_base = p;
+    if (fd != stdoutfd) {
+        for (i = 0; i < iovcnt; i++) {
+            iov1[i].iov_len = iov[i].iov_len;
+            iov1[i].iov_base = p;
+            memcpy((uintptr_t)p + (char *)iov1, iov[i].iov_base,
+                   iov[i].iov_len);
 
-        hash_update_fn(iov[i].iov_base, iov[i].iov_len,
-                       g_sgx_stdio_crypto_state.enc_hash_handle);
+            p += iov[i].iov_len;
+        }
+    }
+    else {
+        for (i = 0; i < iovcnt; i++) {
+            iov1[i].iov_len = iov[i].iov_len;
+            iov1[i].iov_base = p;
 
-        // print_hex(iov[i].iov_base, iov[i].iov_len);
-        st = ctr_encrypt_fn(iov[i].iov_base, iov[i].iov_len,
-                            (uintptr_t)p + (uint8_t *)iov1,
-                            g_sgx_stdio_crypto_state.enc_ctr_handle);
+            hash_update_fn(iov[i].iov_base, iov[i].iov_len,
+                           g_sgx_stdio_crypto_state.enc_hash_handle);
 
-        if (st) {
-            os_printf("%s %d: ctr encrypt failed %#05x\n", __func__, __LINE__,
-                      st);
-            BH_FREE(iov1);
-            return -1;
-        };
-        /* memcpy((uintptr_t)p + (char *)iov1, iov[i].iov_base, iov[i].iov_len);
-         */
-        p += iov[i].iov_len;
+            st = ctr_encrypt_fn(iov[i].iov_base, iov[i].iov_len,
+                                (uintptr_t)p + (uint8_t *)iov1,
+                                g_sgx_stdio_crypto_state.enc_ctr_handle);
+
+            if (st) {
+                os_printf("%s %d: ctr encrypt failed %#05x\n", __func__,
+                          __LINE__, st);
+                BH_FREE(iov1);
+                return -1;
+            };
+            p += iov[i].iov_len;
+        }
     }
 
     if (ocall_writev(&ret, fd, (char *)iov1, (uint32)total_size, iovcnt,

@@ -7,6 +7,7 @@
 #include "platform_api_extension.h"
 #include "sgx_rsrv_mem_mngr.h"
 #include "sgx_tcrypto.h"
+#include <stdint.h>
 
 #if WASM_ENABLE_SGX_IPFS != 0
 #include "sgx_ipfs.h"
@@ -18,12 +19,12 @@ static os_ctr_encrypt_function_t ctr_encrypt_function = NULL;
 static os_ctr_decrypt_function_t ctr_decrypt_function = NULL;
 static os_hash_update_function_t hash_update_function = NULL;
 
-sgx_stdio_crypto_state_t g_sgx_stdio_crypto_state = {
-    .enc_ctr_handle = NULL,
-    .dec_ctr_handle = NULL,
-    .enc_hash_handle = NULL,
-    .dec_hash_handle = NULL,
-};
+sgx_stdio_crypto_state_t g_sgx_stdio_crypto_state = { .enc_ctr_handle = NULL,
+                                                      .dec_ctr_handle = NULL,
+                                                      .enc_hash_handle = NULL,
+                                                      .dec_hash_handle = NULL,
+                                                      .stdinfd = 0,
+                                                      .stdoutfd = 1 };
 
 int
 bh_platform_init()
@@ -135,6 +136,25 @@ os_hash_update_function_t
 os_get_hash_update_function(void)
 {
     return hash_update_function;
+}
+
+void
+os_set_stdio_fds(uint64_t stdinfd, uint64_t stdoutfd)
+{
+    g_sgx_stdio_crypto_state.stdinfd = stdinfd;
+    g_sgx_stdio_crypto_state.stdoutfd = stdoutfd;
+}
+
+uint64_t
+os_get_stdin_fd(void)
+{
+    return g_sgx_stdio_crypto_state.stdinfd;
+}
+
+uint64_t
+os_get_stdout_fd(void)
+{
+    return g_sgx_stdio_crypto_state.stdoutfd;
 }
 
 #define FIXED_BUFFER_SIZE 4096

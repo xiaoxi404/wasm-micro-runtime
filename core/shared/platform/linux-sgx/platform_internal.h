@@ -87,6 +87,13 @@ os_set_hash_update_function(os_hash_update_function_t pf);
 os_hash_update_function_t
 os_get_hash_update_function(void);
 
+void
+os_set_stdio_fds(uint64_t stdinfd, uint64_t stdoutfd);
+uint64_t
+os_get_stdin_fd(void);
+uint64_t
+os_get_stdout_fd(void);
+
 char *
 strcpy(char *dest, const char *src);
 

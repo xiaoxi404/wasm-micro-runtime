@@ -266,6 +266,8 @@ typedef struct sgx_stdio_crypto_state {
     sgx_aes_state_handle_t dec_ctr_handle;
     sgx_sha_state_handle_t enc_hash_handle;
     sgx_sha_state_handle_t dec_hash_handle;
+    uint64_t stdinfd;
+    uint64_t stdoutfd;
 } sgx_stdio_crypto_state_t;
 
 extern sgx_stdio_crypto_state_t g_sgx_stdio_crypto_state;
